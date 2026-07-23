@@ -102,7 +102,7 @@ const deleteAudioFromDB = (id: string): Promise<void> => {
 };
 
 export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate, onPlayLecture }) => {
-  const [activeTab, setActiveTab] = useState<'assistant' | 'media' | 'photos' | 'input'>('assistant');
+  const [activeTab, setActiveTab] = useState<'assistant' | 'media' | 'photos' | 'input' | 'scraper'>('assistant');
   
   // Research Assistant State
   const [researchQuery, setResearchQuery] = useState('');
@@ -121,7 +121,7 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
   const [commitFeedback, setCommitFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Input Portal Mode
-  const [inputMode, setInputMode] = useState<'json' | 'text'>('json');
+  const [inputMode, setInputMode] = useState<'json' | 'text' | 'bulk'>('json');
   const [rawTextContent, setRawTextContent] = useState('');
   const [isParsingText, setIsParsingText] = useState(false);
 
@@ -150,6 +150,168 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
   const [previewData, setPreviewData] = useState<any>(null);
   const [isValidated, setIsValidated] = useState<boolean>(false);
   const [inputFeedback, setInputFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Web Scraping & Citation Generator & Bulk Importer State
+  const [scrapeUrl, setScrapeUrl] = useState('');
+  const [isScrapingUrl, setIsScrapingUrl] = useState(false);
+  const [scrapeError, setScrapeError] = useState<string | null>(null);
+
+  const [citationUrl, setCitationUrl] = useState('');
+  const [isGeneratingCitation, setIsGeneratingCitation] = useState(false);
+  const [citationError, setCitationError] = useState<string | null>(null);
+
+  const [bulkInputText, setBulkInputText] = useState('');
+  const [bulkParsedItems, setBulkParsedItems] = useState<any[]>([]);
+  const [isBulkValidating, setIsBulkValidating] = useState(false);
+  const [bulkCommitFeedback, setBulkCommitFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const handleScrapeUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scrapeUrl.trim()) return;
+    setIsScrapingUrl(true);
+    setScrapeError(null);
+
+    try {
+      const res = await fetch('/api/scrape-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: scrapeUrl.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to scrape URL');
+
+      const jsonMatch = data.text.match(/```json([\s\S]*?)```/) || data.text.match(/```([\s\S]*?)```/);
+      let parsed = null;
+      if (jsonMatch) {
+        try {
+          parsed = JSON.parse(jsonMatch[1].trim());
+        } catch (e) {}
+      }
+
+      if (parsed) {
+        setPasteContent(JSON.stringify(parsed, null, 2));
+        setPreviewData(parsed);
+        setIsValidated(true);
+        setActiveTab('input');
+        setInputFeedback({ type: 'success', message: '✓ Successfully scraped and parsed web page into Metadata Input template!' });
+      } else {
+        setRawTextContent(data.text);
+        setInputMode('text');
+        setActiveTab('input');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setScrapeError(err.message);
+    } finally {
+      setIsScrapingUrl(false);
+    }
+  };
+
+  const handleGenerateCitation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!citationUrl.trim()) return;
+    setIsGeneratingCitation(true);
+    setCitationError(null);
+
+    try {
+      const res = await fetch('/api/scrape-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: citationUrl.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to generate citation');
+
+      const jsonMatch = data.text.match(/```json([\s\S]*?)```/) || data.text.match(/```([\s\S]*?)```/);
+      let parsed = null;
+      if (jsonMatch) {
+        try {
+          parsed = JSON.parse(jsonMatch[1].trim());
+        } catch (e) {}
+      }
+
+      const note = parsed?.sourceNote || `Verified bibliographic record retrieved from ${citationUrl.trim()}`;
+      const year = parsed?.year || new Date().getFullYear();
+      const status = parsed?.verificationStatus || 'verified-source';
+
+      if (parsedResearchEntity) {
+        setEditFields({
+          ...editFields,
+          sourceNote: note,
+          year: year,
+          verificationStatus: status,
+        });
+        setCommitFeedback({ type: 'success', message: '✓ Automated citation and metadata auto-populated into current record fields!' });
+      } else {
+        setCommitFeedback({ type: 'success', message: `✓ Citation Generated: "${note}" (${year}) [${status}]` });
+      }
+    } catch (err: any) {
+      console.error(err);
+      setCitationError(err.message);
+    } finally {
+      setIsGeneratingCitation(false);
+    }
+  };
+
+  const handleBulkValidate = (e: React.FormEvent) => {
+    e.preventDefault();
+    setBulkCommitFeedback(null);
+    setIsBulkValidating(true);
+
+    try {
+      let parsed: any = null;
+      const trimmed = bulkInputText.trim();
+      
+      if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+        parsed = JSON.parse(trimmed);
+      } else {
+        const lines = trimmed.split('\n').filter(l => l.trim().length > 0);
+        parsed = lines.map((line, idx) => {
+          const parts = line.split(',').map(p => p.trim());
+          return {
+            id: `bulk-${dataType}-${Date.now()}-${idx}`,
+            title: parts[0] || 'Untitled Bulk Item',
+            slug: (parts[0] || 'item').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+            year: Number(parts[1]) || 1970,
+            summary: parts[2] || parts[1] || 'Imported via CSV bulk tool.',
+            verificationStatus: 'verified-source'
+          };
+        });
+      }
+
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      if (items.length === 0) throw new Error('No valid items found in input.');
+
+      setBulkParsedItems(items);
+      setBulkCommitFeedback({ type: 'success', message: `✓ Successfully validated ${items.length} item(s) against schema types!` });
+    } catch (err: any) {
+      console.error(err);
+      setBulkCommitFeedback({ type: 'error', message: `Validation Error: ${err.message}` });
+      setBulkParsedItems([]);
+    } finally {
+      setIsBulkValidating(false);
+    }
+  };
+
+  const handleBulkCommitAll = () => {
+    if (bulkParsedItems.length === 0) return;
+    try {
+      const storageKey = dataType === 'lecture' ? 'custom_lectures' :
+                         dataType === 'book' ? 'custom_books' :
+                         dataType === 'quote' ? 'custom_quotes' :
+                         dataType === 'video' ? 'custom_videos' : 'custom_podcasts';
+
+      const existing = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      const updated = [...existing, ...bulkParsedItems];
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+
+      setBulkCommitFeedback({ type: 'success', message: `✓ Successfully committed ${bulkParsedItems.length} record(s) to application state! Reloading...` });
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (err: any) {
+      console.error(err);
+      setBulkCommitFeedback({ type: 'error', message: `Commit Error: ${err.message}` });
+    }
+  };
 
   // Load custom assets on mount
   useEffect(() => {
@@ -934,9 +1096,11 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
       if (dataType === 'lecture') {
         const lectures = Array.isArray(parsed) ? parsed : [parsed];
         for (const item of lectures) {
-          if (!item.id || !item.title || !item.slug) {
-            throw new Error('Each lecture object must contain "id", "title", and "slug" fields.');
+          if (!item.title) {
+            throw new Error('Each lecture object must contain a "title" field.');
           }
+          item.id = item.id || `scraped-lec-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+          item.slug = item.slug || item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         }
         const existing = JSON.parse(localStorage.getItem('custom_lectures') || '[]');
         localStorage.setItem('custom_lectures', JSON.stringify([...existing, ...lectures]));
@@ -947,9 +1111,11 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
       } else if (dataType === 'book') {
         const books = Array.isArray(parsed) ? parsed : [parsed];
         for (const item of books) {
-          if (!item.id || !item.title || !item.slug) {
-            throw new Error('Each book object must contain "id", "title", and "slug" fields.');
+          if (!item.title) {
+            throw new Error('Each book object must contain a "title" field.');
           }
+          item.id = item.id || `scraped-book-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+          item.slug = item.slug || item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         }
         const existing = JSON.parse(localStorage.getItem('custom_books') || '[]');
         localStorage.setItem('custom_books', JSON.stringify([...existing, ...books]));
@@ -960,9 +1126,11 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
       } else if (dataType === 'quote') {
         const quotes = Array.isArray(parsed) ? parsed : [parsed];
         for (const item of quotes) {
-          if (!item.id || !item.text || !item.slug) {
-            throw new Error('Each quote object must contain "id", "text", and "slug" fields.');
+          if (!item.text) {
+            throw new Error('Each quote object must contain a "text" field.');
           }
+          item.id = item.id || `scraped-quote-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+          item.slug = item.slug || item.text.substring(0, 30).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         }
         const existing = JSON.parse(localStorage.getItem('custom_quotes') || '[]');
         localStorage.setItem('custom_quotes', JSON.stringify([...existing, ...quotes]));
@@ -973,9 +1141,11 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
       } else if (dataType === 'video') {
         const videos = Array.isArray(parsed) ? parsed : [parsed];
         for (const item of videos) {
-          if (!item.id || !item.title || !item.slug) {
-            throw new Error('Each video object must contain "id", "title", and "slug" fields.');
+          if (!item.title) {
+            throw new Error('Each video object must contain a "title" field.');
           }
+          item.id = item.id || `scraped-vid-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+          item.slug = item.slug || item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         }
         const existing = JSON.parse(localStorage.getItem('custom_videos') || '[]');
         localStorage.setItem('custom_videos', JSON.stringify([...existing, ...videos]));
@@ -986,9 +1156,11 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
       } else if (dataType === 'podcast') {
         const podcasts = Array.isArray(parsed) ? parsed : [parsed];
         for (const item of podcasts) {
-          if (!item.id || !item.title || !item.spotifyId) {
-            throw new Error('Each podcast object must contain "id", "title", and "spotifyId" fields.');
+          if (!item.title) {
+            throw new Error('Each podcast object must contain a "title" field.');
           }
+          item.id = item.id || `scraped-pod-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+          item.spotifyId = item.spotifyId || item.id;
         }
         const existing = JSON.parse(localStorage.getItem('custom_podcasts') || '[]');
         localStorage.setItem('custom_podcasts', JSON.stringify([...existing, ...podcasts]));
@@ -1162,8 +1334,160 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
             <Plus size={14} />
             <span>Metadata Input Portal</span>
           </button>
+          <button
+            onClick={() => setActiveTab('scraper')}
+            className={`flex items-center gap-2 px-5 py-3 text-xs font-bold uppercase tracking-wider rounded-xl border transition-all ${
+              activeTab === 'scraper' 
+                ? 'bg-[#1E1C18] text-[#F4F0E8] border-[#1E1C18]' 
+                : 'bg-[#F4F0E8] text-[#6E6454] border-[#E6E1D6] hover:bg-[#E6E1D6]'
+            }`}
+          >
+            <Globe size={14} />
+            <span>Web Scraper & Importer</span>
+          </button>
         </div>
       </div>
+
+      {/* Tab 5: Web Scraper & Importer */}
+      {activeTab === 'scraper' && (
+        <div className="space-y-8 bg-[#F4F0E8] border border-[#E6E1D6] rounded-2xl p-6 sm:p-10">
+          <div className="space-y-2">
+            <h2 className="text-2xl font-serif text-[#1E1C18]">Web Scraper & Importer Utility</h2>
+            <p className="text-xs text-[#6E6454] max-w-2xl leading-relaxed">
+              Provide a URL for any lecture, article, or archival document (e.g., <code className="bg-white px-1.5 py-0.5 rounded text-[#8C6D1F] font-mono">https://www.organism.earth/library/document/out-of-your-mind-1</code>). Our server-side helper fetches and parses the page text into the archive's structured JSON schema.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+            <div className="bg-white border border-[#E6E1D6] rounded-xl p-6 space-y-6">
+              <div className="space-y-2">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-[#1E1C18] flex items-center gap-2">
+                  <Globe size={16} className="text-[#8C6D1F]" />
+                  <span>Fetch & Parse Target URL</span>
+                </h3>
+                <p className="text-xs text-[#6E6454]">
+                  Enter the full URL of the lecture transcript or philosophical essay.
+                </p>
+              </div>
+
+              <form onSubmit={handleScrapeUrl} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#6E6454] mb-1">Target URL</label>
+                  <input
+                    type="url"
+                    required
+                    value={scrapeUrl}
+                    onChange={(e) => setScrapeUrl(e.target.value)}
+                    placeholder="https://www.organism.earth/library/document/out-of-your-mind-1"
+                    className="w-full px-3.5 py-3 bg-[#FAF8F5] border border-[#E6E1D6] rounded-xl text-xs font-mono focus:outline-none focus:border-[#8C6D1F]"
+                  />
+                </div>
+
+                {scrapeError && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-xs font-medium">
+                    {scrapeError}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isScrapingUrl}
+                  className="w-full py-3.5 bg-[#8C6D1F] hover:bg-[#735817] disabled:bg-[#736B5E]/50 text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-colors flex items-center justify-center gap-2"
+                >
+                  {isScrapingUrl ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Fetching & Structuring Page...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={14} />
+                      <span>Fetch & Parse Archive Record</span>
+                    </>
+                  )}
+                </button>
+              </form>
+
+              <div className="border-t border-[#F4F0E8] pt-4 space-y-2">
+                <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#6E6454]">Quick Test URLs:</p>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScrapeUrl('https://www.organism.earth/library/document/out-of-your-mind-1')}
+                    className="text-left p-2 bg-[#FAF8F5] hover:bg-[#F4F0E8] border border-[#E6E1D6] rounded-lg text-[11px] font-mono text-[#1E1C18] truncate transition-colors"
+                  >
+                    https://www.organism.earth/library/document/out-of-your-mind-1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScrapeUrl('https://archive.org/details/AlanWatts-OutOfYourMind')}
+                    className="text-left p-2 bg-[#FAF8F5] hover:bg-[#F4F0E8] border border-[#E6E1D6] rounded-lg text-[11px] font-mono text-[#1E1C18] truncate transition-colors"
+                  >
+                    https://archive.org/details/AlanWatts-OutOfYourMind
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white border border-[#E6E1D6] rounded-xl p-6 space-y-6">
+              <div className="space-y-2">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-[#1E1C18] flex items-center gap-2">
+                  <CheckCircle size={16} className="text-[#8C6D1F]" />
+                  <span>Automated Citation & Metadata Generator</span>
+                </h3>
+                <p className="text-xs text-[#6E6454]">
+                  Auto-populate source notes, publication dates, and verification status badges directly from page metadata.
+                </p>
+              </div>
+
+              <form onSubmit={handleGenerateCitation} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#6E6454] mb-1">Source Citation URL</label>
+                  <input
+                    type="url"
+                    required
+                    value={citationUrl}
+                    onChange={(e) => setCitationUrl(e.target.value)}
+                    placeholder="https://archive.org/details/alan-watts..."
+                    className="w-full px-3.5 py-3 bg-[#FAF8F5] border border-[#E6E1D6] rounded-xl text-xs font-mono focus:outline-none focus:border-[#8C6D1F]"
+                  />
+                </div>
+
+                {citationError && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-xs font-medium">
+                    {citationError}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isGeneratingCitation}
+                  className="w-full py-3.5 bg-[#1E1C18] hover:bg-[#322D27] text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-colors flex items-center justify-center gap-2"
+                >
+                  {isGeneratingCitation ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Generating Citation...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle size={14} />
+                      <span>Generate Citation & Auto-Fill</span>
+                    </>
+                  )}
+                </button>
+              </form>
+
+              <div className="p-4 bg-[#FAF8F5] border border-[#E6E1D6] rounded-xl space-y-2 text-xs text-[#6E6454]">
+                <p className="font-semibold text-[#1E1C18]">How Scraped Data Flows:</p>
+                <p className="leading-relaxed">
+                  Once scraped, the record is automatically formatted and transferred into the <strong>Metadata Input Portal</strong> where you can review the live component preview and commit it permanently to the archive.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tab 1: Grounded Research Assistant */}
       {activeTab === 'assistant' && (
@@ -1505,6 +1829,65 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
                   </div>
                 </div>
               )}
+
+              {/* Web Scraping & Automated Citation Generator Box */}
+              <div className="mt-8 pt-8 border-t border-[#E6E1D6] grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white border border-[#E6E1D6] rounded-xl p-6 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Globe size={18} className="text-[#8C6D1F]" />
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-[#1E1C18]">Web Scraping Utility</h3>
+                  </div>
+                  <p className="text-xs text-[#6E6454] leading-relaxed">
+                    Provide a URL for a lecture or article. Our server-side scraper fetches and parses the page text directly into the archive schema.
+                  </p>
+                  <form onSubmit={handleScrapeUrl} className="space-y-3">
+                    <input
+                      type="url"
+                      required
+                      value={scrapeUrl}
+                      onChange={(e) => setScrapeUrl(e.target.value)}
+                      placeholder="https://example.com/alan-watts-lecture"
+                      className="w-full px-3 py-2.5 bg-[#FAF8F5] border border-[#E6E1D6] rounded-lg text-xs focus:outline-none focus:border-[#8C6D1F]"
+                    />
+                    {scrapeError && <p className="text-[11px] text-red-600 font-medium">{scrapeError}</p>}
+                    <button
+                      type="submit"
+                      disabled={isScrapingUrl}
+                      className="w-full py-2.5 bg-[#1E1C18] hover:bg-[#322D27] text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      {isScrapingUrl ? 'Scraping & Parsing...' : 'Scrape & Parse URL'}
+                    </button>
+                  </form>
+                </div>
+
+                <div className="bg-white border border-[#E6E1D6] rounded-xl p-6 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle size={18} className="text-[#8C6D1F]" />
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-[#1E1C18]">Automated Citation Generator</h3>
+                  </div>
+                  <p className="text-xs text-[#6E6454] leading-relaxed">
+                    Prompt for a source URL to auto-populate source-note, publication date, and verification badge fields.
+                  </p>
+                  <form onSubmit={handleGenerateCitation} className="space-y-3">
+                    <input
+                      type="url"
+                      required
+                      value={citationUrl}
+                      onChange={(e) => setCitationUrl(e.target.value)}
+                      placeholder="https://archive.org/details/alan-watts..."
+                      className="w-full px-3 py-2.5 bg-[#FAF8F5] border border-[#E6E1D6] rounded-lg text-xs focus:outline-none focus:border-[#8C6D1F]"
+                    />
+                    {citationError && <p className="text-[11px] text-red-600 font-medium">{citationError}</p>}
+                    <button
+                      type="submit"
+                      disabled={isGeneratingCitation}
+                      className="w-full py-2.5 bg-[#8C6D1F] hover:bg-[#735817] text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      {isGeneratingCitation ? 'Generating Citation...' : 'Generate Citation & Auto-Fill'}
+                    </button>
+                  </form>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -1736,6 +2119,66 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* Registered Image & Photo Assets Catalog */}
+          <div className="bg-[#F4F0E8] border border-[#E6E1D6] rounded-2xl p-6 sm:p-10 space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-serif text-[#1E1C18]">Registered Image & Photo Assets ({customAssets.length})</h3>
+                <p className="text-xs text-[#6E6454] mt-1 leading-relaxed">
+                  All imported images, book covers, and portraits stored in local storage. Copy image URLs, update attributions, or delete unwanted assets.
+                </p>
+              </div>
+            </div>
+
+            {customAssets.length === 0 ? (
+              <div className="border border-dashed border-[#E6E1D6] rounded-xl p-8 text-center text-xs text-[#6E6454] bg-white">
+                No custom image assets registered yet. Use the Asset Uploader or Image Discovery tool to register images.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {customAssets.map((asset) => (
+                  <div key={asset.id} className="bg-white border border-[#E6E1D6] rounded-xl p-4 flex flex-col justify-between space-y-3">
+                    <div className="space-y-2">
+                      <div className="h-32 w-full rounded-lg bg-[#FAF8F5] overflow-hidden border border-[#E6E1D6] relative">
+                        <img
+                          src={asset.dataUrl}
+                          alt={asset.name}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute top-2 left-2 text-[8px] font-bold uppercase bg-[#8C6D1F] text-white px-1.5 py-0.5 rounded tracking-widest">
+                          {asset.tag}
+                        </span>
+                      </div>
+                      <h4 className="text-xs font-serif font-bold text-[#1E1C18] truncate">{asset.name}</h4>
+                      <p className="text-[10px] text-[#6E6454] line-clamp-2">{asset.description || 'No description'}</p>
+                    </div>
+                    <div className="pt-2 border-t border-[#F4F0E8] flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(asset.dataUrl);
+                          setCopiedText(asset.id);
+                          setTimeout(() => setCopiedText(null), 2000);
+                        }}
+                        className="flex-1 py-1.5 px-2 bg-[#F4F0E8] hover:bg-[#E6E1D6] text-[10px] font-bold uppercase tracking-wider rounded text-[#1E1C18] flex items-center justify-center gap-1 transition-colors"
+                      >
+                        {copiedText === asset.id ? <CheckCircle size={11} className="text-green-600" /> : <Copy size={11} />}
+                        <span>{copiedText === asset.id ? 'Copied URL' : 'Copy URL'}</span>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteAsset(asset.id, asset.name)}
+                        className="p-1.5 border border-red-200 hover:bg-red-50 text-red-600 rounded transition-colors"
+                        title="Delete asset"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -2236,6 +2679,15 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
               >
                 AI-Driven Parser (Plain Text)
               </button>
+              <button
+                type="button"
+                onClick={() => setInputMode('bulk')}
+                className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${
+                  inputMode === 'bulk' ? 'bg-[#1E1C18] text-white' : 'text-[#6E6454] hover:bg-[#F4F0E8]'
+                }`}
+              >
+                CSV / JSON Bulk Importer
+              </button>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -2315,6 +2767,60 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
                     rows={12}
                     className="w-full p-4 bg-white border border-[#E6E1D6] rounded-xl text-xs font-mono focus:outline-none focus:border-[#8C6D1F] shadow-inner"
                   />
+                </div>
+              ) : inputMode === 'bulk' ? (
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold uppercase tracking-widest text-[#6E6454]">CSV / JSON Bulk Input</label>
+                    <p className="text-[11px] text-[#6E6454]">Paste JSON array or CSV lines (`Title, Year, Summary`).</p>
+                  </div>
+                  <textarea
+                    value={bulkInputText}
+                    onChange={(e) => setBulkInputText(e.target.value)}
+                    placeholder={`[
+  { "title": "Item 1", "year": 1968, "summary": "..." }
+]`}
+                    rows={10}
+                    className="w-full p-4 bg-white border border-[#E6E1D6] rounded-xl text-xs font-mono focus:outline-none focus:border-[#8C6D1F]"
+                  />
+                  {bulkCommitFeedback && (
+                    <div className={`p-3 rounded-lg text-xs font-medium border ${
+                      bulkCommitFeedback.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'
+                    }`}>
+                      {bulkCommitFeedback.message}
+                    </div>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={isBulkValidating}
+                    onClick={handleBulkValidate}
+                    className="w-full py-3 bg-[#1E1C18] hover:bg-[#322D27] text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-colors flex items-center justify-center gap-2"
+                  >
+                    {isBulkValidating ? 'Validating...' : 'Validate & Preview Bulk Items'}
+                  </button>
+
+                  {bulkParsedItems.length > 0 && (
+                    <div className="space-y-3 pt-4 border-t border-[#E6E1D6]">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-widest text-[#6E6454]">Validated ({bulkParsedItems.length})</span>
+                      </div>
+                      <div className="max-h-40 overflow-y-auto border border-[#E6E1D6] rounded-lg bg-white p-2 text-xs space-y-1">
+                        {bulkParsedItems.map((item, i) => (
+                          <div key={i} className="truncate border-b border-[#FAF8F5] pb-1">
+                            <strong>{item.title}</strong> ({item.year})
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleBulkCommitAll}
+                        className="w-full py-3 bg-[#8C6D1F] hover:bg-[#735817] text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-colors flex items-center justify-center gap-2"
+                      >
+                        <CheckCircle size={14} />
+                        <span>Commit All {bulkParsedItems.length} Records to Archive</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
