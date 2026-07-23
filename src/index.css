@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: var(--bg-color, #F9F7F2);
+    color: var(--text-color, #1A1A1A);
+  }
+  h1, h2, h3, h4, .font-editorial {
+    font-family: 'Newsreader', serif;
+  }
+}
+
+:root {
+  --bg-color: #F9F7F2;
+  --text-color: #1A1A1A;
+  --border-color: #D1CECA;
+  --accent-color: #B48B40;
+}
+
+[data-theme="editorial"] {
+  --bg-color: #F9F7F2;
+  --text-color: #1A1A1A;
+  --border-color: #D1CECA;
+  --accent-color: #B48B40;
+}
+
+[data-theme="neobrutalist"] {
+  --bg-color: #FFF9E6;
+  --text-color: #000000;
+  --border-color: #000000;
+  --accent-color: #FFE500;
+}
+
+[data-theme="neobrutalist"] body {
+  background-color: #FFF9E6 !important;
+  color: #000000 !important;
+}
+
+[data-theme="neobrutalist"] header {
+  border-bottom: 4px solid #000000 !important;
+  background-color: #FFE500 !important;
+  box-shadow: none !important;
+}
+
+[data-theme="neobrutalist"] footer {
+  border-top: 4px solid #000000 !important;
+  background-color: #000000 !important;
+  color: #FFF9E6 !important;
+}
+
+[data-theme="neobrutalist"] .bg-\[\#F4F0E8\],
+[data-theme="neobrutalist"] .bg-\[\#F9F7F2\],
+[data-theme="neobrutalist"] .bg-\[\#F2EEE9\],
+[data-theme="neobrutalist"] .bg-white,
+[data-theme="neobrutalist"] .bg-\[\#26352C\],
+[data-theme="neobrutalist"] .bg-\[\#1E2B37\] {
+  background-color: #FFFFFF !important;
+  border: 3px solid #000000 !important;
+  box-shadow: 5px 5px 0px 0px #000000 !important;
+  border-radius: 0px !important;
+}
+
+[data-theme="neobrutalist"] button:not(.no-brut),
+[data-theme="neobrutalist"] .rounded-xl,
+[data-theme="neobrutalist"] .rounded-2xl,
+[data-theme="neobrutalist"] .rounded-full {
+  border-radius: 0px !important;
+  border: 3px solid #000000 !important;
+}
+
+[data-theme="neobrutalist"] button {
+  background-color: #00F0FF;
+  color: #000000;
+  box-shadow: 4px 4px 0px 0px #000000;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transition: all 0.1s ease;
+}
+
+[data-theme="neobrutalist"] button:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px 0px #000000;
+}
+
+[data-theme="neobrutalist"] button:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0px 0px #000000;
+}
+
+[data-theme="neobrutalist"] input,
+[data-theme="neobrutalist"] select {
+  border: 3px solid #000000 !important;
+  box-shadow: 3px 3px 0px 0px #000000 !important;
+  background-color: #FFFFFF !important;
+  border-radius: 0px !important;
+  font-weight: 700;
+}
+
+[data-theme="neobrutalist"] .badge,
+[data-theme="neobrutalist"] span[class*="bg-"] {
+  border-radius: 0px !important;
+  border: 2px solid #000000 !important;
+}
+
+/* Custom scrollbar & selection */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F2EEE9;
+}
+::-webkit-scrollbar-thumb {
+  background: #D1CECA;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #B48B40;
+}
