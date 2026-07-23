@@ -100,6 +100,7 @@ export interface VideoItem {
   thumbnailUrl: string;
   description: string;
   verificationStatus: VerificationStatus;
+  youtubeId?: string;
 }
 
 export type ViewState = 

@@ -495,7 +495,7 @@ export const ESSAYS: Essay[] = [
   }
 ];
 
-export const VIDEOS: VideoItem[] = [
+export const baseVIDEOS: VideoItem[] = [
   {
     id: 'vid-1',
     title: 'Alan Watts — The Spectrum of Love (Archival Film)',
@@ -505,7 +505,8 @@ export const VIDEOS: VideoItem[] = [
     archiveSource: 'PBS / KQED San Francisco Archive',
     thumbnailUrl: 'https://images.unsplash.com/photo-1516541196182-6bdb0516ed27?auto=format&fit=crop&w=800&q=80',
     description: 'A rare televised lecture on the nature of interpersonal relationship, emotional attachment, and unconditional freedom.',
-    verificationStatus: 'verified-source'
+    verificationStatus: 'verified-source',
+    youtubeId: 'emHAoQGoQic'
   },
   {
     id: 'vid-2',
@@ -516,13 +517,27 @@ export const VIDEOS: VideoItem[] = [
     archiveSource: 'BBC Television Archives London',
     thumbnailUrl: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=800&q=80',
     description: 'Alan Watts discusses Eastern thought and Western ecological crises with BBC broadcasters in London.',
-    verificationStatus: 'verified-source'
+    verificationStatus: 'verified-source',
+    youtubeId: 'aLg4KK6msDw'
+  },
+  {
+    id: 'vid-3',
+    title: 'Alan Watts — What If Money Was No Object? (Esalen)',
+    slug: 'what-if-money-was-no-object',
+    date: '1966',
+    duration: '3:12',
+    archiveSource: 'Electronic University Master Reels',
+    thumbnailUrl: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=800&q=80',
+    description: 'The famous short reflection questioning our obsession with security and money versus our true passionate play.',
+    verificationStatus: 'verified-source',
+    youtubeId: 'khOaAHK7efc'
   }
 ];
 
 export let LECTURES: Lecture[] = [...baseLECTURES];
 export let BOOKS: Book[] = [...baseBOOKS];
 export let QUOTES: Quote[] = [...baseQUOTES];
+export let VIDEOS: VideoItem[] = [...baseVIDEOS];
 
 if (typeof window !== 'undefined') {
   try {
@@ -559,5 +574,17 @@ if (typeof window !== 'undefined') {
     }
   } catch (e) {
     console.error('Error loading custom quotes:', e);
+  }
+
+  try {
+    const customVideos = localStorage.getItem('custom_videos');
+    if (customVideos) {
+      const parsed = JSON.parse(customVideos);
+      if (Array.isArray(parsed)) {
+        VIDEOS = [...baseVIDEOS, ...parsed];
+      }
+    }
+  } catch (e) {
+    console.error('Error loading custom videos:', e);
   }
 }

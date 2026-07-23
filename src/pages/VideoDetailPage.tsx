@@ -36,23 +36,35 @@ export const VideoDetailPage: React.FC<VideoDetailPageProps> = ({ id, onNavigate
             {video.title}
           </h1>
 
-          {/* Video Player Placeholder */}
-          <div className="relative rounded-2xl overflow-hidden aspect-video bg-[#1E1C18] flex items-center justify-center shadow-2xl group cursor-pointer">
-            <img 
-              src={video.thumbnailUrl} 
-              alt={video.title}
-              className="absolute inset-0 w-full h-full object-cover opacity-70 group-hover:scale-105 transition-transform duration-700"
-              referrerPolicy="no-referrer"
-            />
-            <div className="absolute inset-0 bg-black/30" />
-            <div className="relative z-10 w-20 h-20 rounded-full bg-[#C9A227] text-[#1E1C18] flex items-center justify-center shadow-xl group-hover:scale-110 transition-transform">
-              <Play size={32} className="ml-1 fill-current" />
+          {/* Video Player or Interactive YouTube Embed */}
+          {video.youtubeId ? (
+            <div className="relative rounded-2xl overflow-hidden aspect-video bg-black shadow-2xl border border-[#E6E1D6]">
+              <iframe
+                src={`https://www.youtube.com/embed/${video.youtubeId}?rel=0&modestbranding=1`}
+                title={video.title}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="w-full h-full border-none"
+              />
             </div>
-            <div className="absolute bottom-4 left-4 right-4 text-white flex items-center justify-between z-10 text-xs font-medium">
-              <span>Duration: {video.duration}</span>
-              <span>Archival Master Stream</span>
+          ) : (
+            <div className="relative rounded-2xl overflow-hidden aspect-video bg-[#1E1C18] flex items-center justify-center shadow-2xl group cursor-pointer">
+              <img 
+                src={video.thumbnailUrl} 
+                alt={video.title}
+                className="absolute inset-0 w-full h-full object-cover opacity-70 group-hover:scale-105 transition-transform duration-700"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-black/30" />
+              <div className="relative z-10 w-20 h-20 rounded-full bg-[#C9A227] text-[#1E1C18] flex items-center justify-center shadow-xl group-hover:scale-110 transition-transform">
+                <Play size={32} className="ml-1 fill-current" />
+              </div>
+              <div className="absolute bottom-4 left-4 right-4 text-white flex items-center justify-between z-10 text-xs font-medium">
+                <span>Duration: {video.duration}</span>
+                <span>Archival Master Stream</span>
+              </div>
             </div>
-          </div>
+          )}
 
           <p className="text-sm sm:text-base text-[#6E6454] leading-relaxed pt-4">
             {video.description}

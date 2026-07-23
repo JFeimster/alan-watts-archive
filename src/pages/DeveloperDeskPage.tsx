@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ViewState, Lecture, Book, Quote } from '../types';
+import { ViewState, Lecture, Book, Quote, VideoItem } from '../types';
 import { LectureCard } from '../components/cards/LectureCard';
 import { BookCard } from '../components/cards/BookCard';
 import { QuoteCard } from '../components/cards/QuoteCard';
+import { VideoCard } from '../components/cards/VideoCard';
 import { 
   Wrench, 
   Search, 
@@ -16,6 +17,7 @@ import {
   AlertCircle, 
   Copy, 
   ExternalLink,
+  Link,
   BookOpen,
   ArrowRight,
   Music,
@@ -126,12 +128,252 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
   // Archival Photo Sourcing State
   const [photoQuery, setPhotoQuery] = useState('Alan Watts');
   const [copiedText, setCopiedText] = useState<string | null>(null);
+  const [isSearchingImages, setIsSearchingImages] = useState(false);
+  const [imageResults, setImageResults] = useState<any[] | null>(null);
+  const [imageSearchError, setImageSearchError] = useState<string | null>(null);
+  const [copiedImageIndex, setCopiedImageIndex] = useState<number | null>(null);
+
+  // Dynamic Custom Assets State (Base64 or URL Images)
+  const [customAssets, setCustomAssets] = useState<any[]>([]);
+  const [assetName, setAssetName] = useState('');
+  const [assetTag, setAssetTag] = useState('Book Cover');
+  const [assetDesc, setAssetDesc] = useState('');
+  const [assetFile, setAssetFile] = useState<File | null>(null);
+  const [uploadedAssetBase64, setUploadedAssetBase64] = useState<string>('');
+  const [uploadedAssetUrl, setUploadedAssetUrl] = useState<string>('');
+  const [isUploadingAsset, setIsUploadingAsset] = useState(false);
+  const [assetFeedback, setAssetFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // JSON Data Input State
-  const [dataType, setDataType] = useState<'lecture' | 'book' | 'quote'>('lecture');
+  const [dataType, setDataType] = useState<'lecture' | 'book' | 'quote' | 'video' | 'podcast'>('lecture');
   const [pasteContent, setPasteContent] = useState('');
   const [previewData, setPreviewData] = useState<any>(null);
+  const [isValidated, setIsValidated] = useState<boolean>(false);
   const [inputFeedback, setInputFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Load custom assets on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('custom_assets');
+      if (stored) {
+        setCustomAssets(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.error('Error loading custom assets:', e);
+    }
+  }, []);
+
+  // Handle local file selection and convert to Base64
+  const handleFileChangeBase64 = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setAssetFeedback(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setAssetFeedback({ type: 'error', message: 'Please select a valid image file.' });
+      return;
+    }
+
+    // Check size (limit to 4MB for localStorage safety)
+    if (file.size > 4 * 1024 * 1024) {
+      setAssetFeedback({ type: 'error', message: 'Image size exceeds 4MB limit. Please upload a smaller image.' });
+      return;
+    }
+
+    if (!assetName) {
+      // Set default name based on file
+      const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+      setAssetName(baseName);
+    }
+
+    setIsUploadingAsset(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setUploadedAssetBase64(reader.result as string);
+      setUploadedAssetUrl(''); // Clear public URL since base64 is active
+      setIsUploadingAsset(false);
+      setAssetFeedback({ type: 'success', message: '✓ Image successfully converted to Base64 Data URL!' });
+    };
+    reader.onerror = () => {
+      setIsUploadingAsset(false);
+      setAssetFeedback({ type: 'error', message: 'Failed to read file contents.' });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Handle manual Asset Registry
+  const handleRegisterAsset = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAssetFeedback(null);
+
+    const activeSrc = uploadedAssetBase64 || uploadedAssetUrl.trim();
+    if (!activeSrc) {
+      setAssetFeedback({ type: 'error', message: 'Please upload a local file or paste a public URL.' });
+      return;
+    }
+
+    if (!assetName.trim()) {
+      setAssetFeedback({ type: 'error', message: 'Please provide a name/label for this asset.' });
+      return;
+    }
+
+    const newAsset = {
+      id: `asset-${Date.now()}`,
+      name: assetName.trim(),
+      tag: assetTag,
+      description: assetDesc.trim(),
+      dataUrl: activeSrc,
+      type: uploadedAssetBase64 ? 'base64' : 'url',
+      size: uploadedAssetBase64 ? `${Math.round(activeSrc.length / 1024)} KB` : 'External Link',
+      timestamp: Date.now()
+    };
+
+    try {
+      const existing = JSON.parse(localStorage.getItem('custom_assets') || '[]');
+      const updated = [newAsset, ...existing];
+      localStorage.setItem('custom_assets', JSON.stringify(updated));
+      setCustomAssets(updated);
+
+      // Clear form
+      setAssetName('');
+      setAssetDesc('');
+      setUploadedAssetBase64('');
+      setUploadedAssetUrl('');
+      setAssetFeedback({ type: 'success', message: `✓ Successfully registered asset "${newAsset.name}"!` });
+    } catch (err: any) {
+      console.error(err);
+      setAssetFeedback({ type: 'error', message: `Storage Limit Exceeded: ${err.message}. LocalStorage is full. Please delete other custom assets or use a Public URL instead.` });
+    }
+  };
+
+  // Handle custom asset deletion
+  const handleDeleteAsset = (id: string, name: string) => {
+    if (window.confirm(`Are you sure you want to delete the asset "${name}"?`)) {
+      try {
+        const stored = JSON.parse(localStorage.getItem('custom_assets') || '[]');
+        const filtered = stored.filter((a: any) => a.id !== id);
+        localStorage.setItem('custom_assets', JSON.stringify(filtered));
+        setCustomAssets(filtered);
+      } catch (e) {
+        console.error('Error deleting asset:', e);
+      }
+    }
+  };
+
+  // Handle programmatic asset injection into the active Data Input template
+  const handleInsertAssetUrl = (dataUrl: string) => {
+    try {
+      const parsed = JSON.parse(pasteContent);
+      if (parsed && typeof parsed === 'object') {
+        const item = Array.isArray(parsed) ? parsed[0] : parsed;
+        if (dataType === 'book') {
+          item.coverImage = dataUrl;
+        } else if (dataType === 'video') {
+          item.thumbnailUrl = dataUrl;
+        } else {
+          item.imageUrl = dataUrl;
+        }
+        setPasteContent(JSON.stringify(parsed, null, 2));
+        setInputFeedback({ type: 'success', message: '✓ Custom Asset successfully injected into the active JSON metadata!' });
+      } else {
+        throw new Error('Not an object');
+      }
+    } catch (err) {
+      // If current is empty or invalid JSON, let's pre-populate the whole template with the asset URL inserted
+      const currentTemplate = { ...templates[dataType] };
+      if (dataType === 'book') {
+        (currentTemplate as any).coverImage = dataUrl;
+      } else if (dataType === 'video') {
+        (currentTemplate as any).thumbnailUrl = dataUrl;
+      } else {
+        (currentTemplate as any).imageUrl = dataUrl;
+      }
+      setPasteContent(JSON.stringify(currentTemplate, null, 2));
+      setInputFeedback({ type: 'success', message: '✓ Instantiated template with custom asset injected!' });
+    }
+  };
+
+  // Schema verification and Live Component Preview Trigger
+  const handleValidateAndPreview = () => {
+    setInputFeedback(null);
+    setPreviewData(null);
+    setIsValidated(false);
+
+    if (!pasteContent.trim()) {
+      setInputFeedback({ type: 'error', message: 'JSON editor is empty. Paste structured data or template JSON first.' });
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(pasteContent);
+      const item = Array.isArray(parsed) ? parsed[0] : parsed;
+
+      if (!item || typeof item !== 'object') {
+        throw new Error('JSON payload must be a structured Object or an Array containing a valid object.');
+      }
+
+      // Check schema fields based on dataType
+      if (dataType === 'lecture') {
+        const required = ['id', 'title', 'slug'];
+        for (const f of required) {
+          if (!item[f]) throw new Error(`Missing required lecture field: "${f}"`);
+        }
+        if (item.year && isNaN(Number(item.year))) {
+          throw new Error('The "year" field must be a valid integer.');
+        }
+        if (item.durationSeconds && isNaN(Number(item.durationSeconds))) {
+          throw new Error('The "durationSeconds" field must be a valid number.');
+        }
+      } else if (dataType === 'book') {
+        const required = ['id', 'title', 'slug'];
+        for (const f of required) {
+          if (!item[f]) throw new Error(`Missing required book field: "${f}"`);
+        }
+        if (item.year && isNaN(Number(item.year))) {
+          throw new Error('The "year" field must be a valid integer.');
+        }
+        if (!item.coverImage) {
+          setInputFeedback({
+            type: 'error',
+            message: 'Warning: "coverImage" is missing or empty. An editorial book card should have a valid image URL or base64.'
+          });
+        }
+      } else if (dataType === 'quote') {
+        const required = ['id', 'text', 'slug'];
+        for (const f of required) {
+          if (!item[f]) throw new Error(`Missing required quote field: "${f}"`);
+        }
+        if (item.year && isNaN(Number(item.year))) {
+          throw new Error('The "year" field must be a valid integer.');
+        }
+      } else if (dataType === 'video') {
+        const required = ['id', 'title', 'slug'];
+        for (const f of required) {
+          if (!item[f]) throw new Error(`Missing required video field: "${f}"`);
+        }
+      } else if (dataType === 'podcast') {
+        const required = ['id', 'title', 'spotifyId'];
+        for (const f of required) {
+          if (!item[f]) throw new Error(`Missing required podcast field: "${f}"`);
+        }
+      }
+
+      setPreviewData(item);
+      setIsValidated(true);
+      setInputFeedback({
+        type: 'success',
+        message: '✓ Component validation successful! The schema is valid and the card component has been rendered live below. Click "Validate & Commit" to append this to your live archive store.'
+      });
+    } catch (err: any) {
+      setPreviewData(null);
+      setIsValidated(false);
+      setInputFeedback({
+        type: 'error',
+        message: `Schema Validation Error: ${err.message}`
+      });
+    }
+  };
+
 
   // Custom Audio & Lecture Registrar State
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -218,21 +460,9 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
   }, [researchResult]);
 
   useEffect(() => {
-    if (!pasteContent.trim()) {
-      setPreviewData(null);
-      return;
-    }
-    try {
-      const parsed = JSON.parse(pasteContent);
-      const item = Array.isArray(parsed) ? parsed[0] : parsed;
-      if (item && typeof item === 'object') {
-        setPreviewData(item);
-      } else {
-        setPreviewData(null);
-      }
-    } catch (e) {
-      setPreviewData(null);
-    }
+    // Editing content resets validation status to require explicit preview button validation
+    setIsValidated(false);
+    setPreviewData(null);
   }, [pasteContent]);
 
   const handleAIParseText = async () => {
@@ -632,6 +862,62 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
     setTimeout(() => setCopiedText(null), 2000);
   };
 
+  const handleDiscoverImages = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!photoQuery.trim()) return;
+
+    setIsSearchingImages(true);
+    setImageSearchError(null);
+    setImageResults(null);
+
+    try {
+      const res = await fetch('/api/discover-images', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: photoQuery }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP Error ${res.status}: Failed to reach image discovery agent.`);
+      }
+
+      const data = await res.json();
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      const parsedJSON = extractJSON(data.text);
+      if (parsedJSON && Array.isArray(parsedJSON)) {
+        setImageResults(parsedJSON);
+      } else {
+        try {
+          const directParsed = JSON.parse(data.text.trim());
+          if (Array.isArray(directParsed)) {
+            setImageResults(directParsed);
+          } else {
+            throw new Error("AI output was not a valid structured list.");
+          }
+        } catch (inner) {
+          throw new Error("Grounded agent returned answers but they could not be automatically formatted into an image list code block. Please try another query.");
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      setImageSearchError(err.message || 'An error occurred during image discovery.');
+    } finally {
+      setIsSearchingImages(false);
+    }
+  };
+
+  const handleCopyImageMetadata = (img: any, index: number) => {
+    const formattedStr = JSON.stringify(img, null, 2);
+    navigator.clipboard.writeText(formattedStr);
+    setCopiedImageIndex(index);
+    setTimeout(() => setCopiedImageIndex(null), 2000);
+  };
+
   // Parse and Save JSON Metadata
   const handleImportData = (e: React.FormEvent) => {
     e.preventDefault();
@@ -684,6 +970,32 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
           type: 'success', 
           message: `Successfully imported ${quotes.length} quote(s). Reloading application...` 
         });
+      } else if (dataType === 'video') {
+        const videos = Array.isArray(parsed) ? parsed : [parsed];
+        for (const item of videos) {
+          if (!item.id || !item.title || !item.slug) {
+            throw new Error('Each video object must contain "id", "title", and "slug" fields.');
+          }
+        }
+        const existing = JSON.parse(localStorage.getItem('custom_videos') || '[]');
+        localStorage.setItem('custom_videos', JSON.stringify([...existing, ...videos]));
+        setInputFeedback({ 
+          type: 'success', 
+          message: `Successfully imported ${videos.length} video(s). Reloading application...` 
+        });
+      } else if (dataType === 'podcast') {
+        const podcasts = Array.isArray(parsed) ? parsed : [parsed];
+        for (const item of podcasts) {
+          if (!item.id || !item.title || !item.spotifyId) {
+            throw new Error('Each podcast object must contain "id", "title", and "spotifyId" fields.');
+          }
+        }
+        const existing = JSON.parse(localStorage.getItem('custom_podcasts') || '[]');
+        localStorage.setItem('custom_podcasts', JSON.stringify([...existing, ...podcasts]));
+        setInputFeedback({ 
+          type: 'success', 
+          message: `Successfully imported ${podcasts.length} podcast(s). Reloading application...` 
+        });
       }
 
       setPasteContent('');
@@ -700,11 +1012,14 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
   };
 
   const handleClearCustomData = () => {
-    if (window.confirm('Are you sure you want to clear all imported custom lectures, books, and quotes? This will restore the default static archive.')) {
+    if (window.confirm('Are you sure you want to clear all imported custom lectures, books, quotes, videos, and podcasts? This will restore the default static archive.')) {
       localStorage.removeItem('custom_lectures');
       localStorage.removeItem('custom_books');
       localStorage.removeItem('custom_quotes');
-      setInputFeedback({ type: 'success', message: 'All custom data cleared. Reloading...' });
+      localStorage.removeItem('custom_videos');
+      localStorage.removeItem('custom_podcasts');
+      localStorage.removeItem('custom_assets');
+      setInputFeedback({ type: 'success', message: 'All custom data, media and registered assets cleared. Reloading...' });
       setTimeout(() => {
         window.location.reload();
       }, 1000);
@@ -756,6 +1071,28 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
       context: "UC Santa Cruz lectures.",
       interpretation: "The self is subject, it can never become its own object.",
       topics: ["ego-identity-and-the-separate-self"]
+    },
+    video: {
+      id: "vid-custom-1",
+      title: "Alan Watts — Live at Esalen Institute",
+      slug: "live-at-esalen-institute-custom",
+      date: "1968",
+      duration: "12:15",
+      archiveSource: "Esalen Archives, Big Sur",
+      thumbnailUrl: "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=800&q=80",
+      description: "A profound segment from Alan Watts discussing Eastern philosophy and the concept of play in the forest of Big Sur.",
+      verificationStatus: "verified-source",
+      youtubeId: "emHAoQGoQic"
+    },
+    podcast: {
+      id: "pod-custom-1",
+      title: "Ep. 25 — The World as Empty Space",
+      duration: "36:10",
+      date: "March 2022",
+      spotifyId: "37pS1f98VzXk1q3lU6A6fG",
+      description: "Exploring the Buddhist concept of Sunyata—why emptiness is form, form is emptiness, and nothing is more solid than empty space.",
+      season: 2,
+      episode: 5
     }
   };
 
@@ -1415,28 +1752,195 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#736B5E]" />
-              <input
-                type="text"
-                value={photoQuery}
-                onChange={(e) => setPhotoQuery(e.target.value)}
-                placeholder="Alan Watts photograph query"
-                className="w-full pl-12 pr-4 py-3.5 bg-white border border-[#E6E1D6] rounded-xl text-sm focus:outline-none focus:border-[#8C6D1F]"
-              />
+          <form onSubmit={handleDiscoverImages} className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#736B5E]" />
+                <input
+                  type="text"
+                  value={photoQuery}
+                  onChange={(e) => setPhotoQuery(e.target.value)}
+                  placeholder="e.g. Alan Watts on house boat Vallejo, or lecturing at Esalen"
+                  className="w-full pl-12 pr-4 py-3.5 bg-white border border-[#E6E1D6] rounded-xl text-sm focus:outline-none focus:border-[#8C6D1F]"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="submit"
+                  disabled={isSearchingImages}
+                  className="px-6 py-3.5 bg-[#8C6D1F] hover:bg-[#735817] disabled:bg-[#736B5E]/50 text-white text-xs font-bold uppercase tracking-widest transition-all rounded-xl flex items-center justify-center gap-2"
+                >
+                  {isSearchingImages ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Searching...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={14} />
+                      <span>Discover via AI Agent</span>
+                    </>
+                  )}
+                </button>
+                <a
+                  href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(photoQuery)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-6 py-3.5 bg-[#1E1C18] text-white text-xs font-bold uppercase tracking-widest hover:bg-[#3A352F] transition-colors rounded-xl flex items-center justify-center gap-2"
+                >
+                  <Globe size={14} />
+                  <span>Launch Google Images</span>
+                  <ExternalLink size={12} />
+                </a>
+              </div>
             </div>
-            <a
-              href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(photoQuery)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-8 py-3.5 bg-[#1E1C18] text-white text-xs font-bold uppercase tracking-widest hover:bg-[#3A352F] transition-colors rounded-xl flex items-center justify-center gap-2"
-            >
-              <Globe size={14} />
-              <span>Launch Google Images</span>
-              <ExternalLink size={12} />
-            </a>
-          </div>
+          </form>
+
+          {/* AI Discovery Error */}
+          {imageSearchError && (
+            <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-4 flex gap-3 items-start">
+              <AlertCircle size={18} className="mt-0.5 shrink-0" />
+              <div className="text-xs font-medium">{imageSearchError}</div>
+            </div>
+          )}
+
+          {/* AI Discovery Results */}
+          {imageResults && (
+            <div className="space-y-6 border-t border-[#E6E1D6] pt-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-[#6E6454] flex items-center gap-2">
+                  <Sparkles size={16} className="text-[#8C6D1F]" />
+                  <span>AI Discovered Photographic Records ({imageResults.length})</span>
+                </h3>
+                <button
+                  onClick={() => setImageResults(null)}
+                  className="text-xs text-[#6E6454] hover:text-[#1E1C18] underline"
+                >
+                  Clear Results
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {imageResults.map((img, idx) => (
+                  <div key={idx} className="bg-white border border-[#E6E1D6] rounded-xl overflow-hidden flex flex-col justify-between shadow-sm">
+                    {/* Visual Preview */}
+                    <div className="bg-[#FAF8F5] border-b border-[#E6E1D6] h-48 flex items-center justify-center relative overflow-hidden group">
+                      {img.imageUrl && (img.imageUrl.startsWith('http://') || img.imageUrl.startsWith('https://')) ? (
+                        <>
+                          <img
+                            src={img.imageUrl}
+                            alt={img.title}
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            onError={(e) => {
+                              (e.target as any).style.display = 'none';
+                              const fallback = (e.target as any).nextSibling;
+                              if (fallback) (fallback as any).style.display = 'flex';
+                            }}
+                          />
+                          <div className="absolute inset-0 flex-col items-center justify-center p-4 text-center space-y-2 bg-[#FAF8F5]" style={{ display: 'none' }}>
+                            <ImageIcon size={32} className="text-[#D1CECA]" />
+                            <span className="text-xs font-semibold text-[#8C6D1F]">Archive Source Metadata Only</span>
+                            <span className="text-[10px] text-[#6E6454] max-w-xs">No direct image file URL returned. Source page link below is fully active.</span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center space-y-2 bg-[#FAF8F5]">
+                          <ImageIcon size={32} className="text-[#D1CECA]" />
+                          <span className="text-xs font-semibold text-[#8C6D1F]">Archive Source Metadata Only</span>
+                          <span className="text-[10px] text-[#6E6454] max-w-xs">No direct image file URL returned. Source page link below is fully active.</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Metadata Content */}
+                    <div className="p-6 space-y-4 flex-1 flex flex-col justify-between">
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-4">
+                          <h4 className="font-serif font-bold text-lg text-[#1E1C18] leading-tight">
+                            {img.title}
+                          </h4>
+                          {img.year && (
+                            <span className="px-2 py-0.5 bg-[#FAF8F5] border border-[#E6E1D6] rounded text-xs font-mono font-bold text-[#8C6D1F]">
+                              {img.year}
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-xs text-[#6E6454] leading-relaxed">
+                          {img.description}
+                        </p>
+
+                        <div className="grid grid-cols-2 gap-4 pt-2 text-xs">
+                          <div>
+                            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#6E6454] block mb-0.5">Collection/Source</span>
+                            <span className="text-[#1E1C18] font-medium leading-normal">{img.attribution || 'Unknown Collection'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#6E6454] block mb-0.5">License Type</span>
+                            <span className="px-1.5 py-0.5 bg-[#FAF8F5] text-[#8C6D1F] border border-[#E6E1D6] rounded text-[10px] font-mono font-bold inline-block leading-none mt-0.5">
+                              {img.licenseType || 'Public Domain'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Interactive Copy Controls */}
+                      <div className="pt-4 border-t border-[#F4F0E8] space-y-3">
+                        {img.sourceUrl && (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#6E6454]">Source URL:</span>
+                            <a
+                              href={img.sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-[#8C6D1F] hover:text-[#735817] hover:underline flex items-center gap-1 truncate max-w-[200px]"
+                            >
+                              <Link size={12} className="shrink-0" />
+                              <span className="truncate">{img.sourceUrl}</span>
+                              <ExternalLink size={10} className="shrink-0" />
+                            </a>
+                          </div>
+                        )}
+
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleCopyImageMetadata(img, idx)}
+                            className="flex-1 py-2 bg-[#F4F0E8] hover:bg-[#E6E1D6] text-[#1E1C18] text-xs font-bold uppercase tracking-wider transition-colors rounded-lg flex items-center justify-center gap-2"
+                          >
+                            {copiedImageIndex === idx ? (
+                              <>
+                                <CheckCircle size={13} className="text-green-600" />
+                                <span>Copied Metadata!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy size={13} />
+                                <span>Copy JSON Metadata</span>
+                              </>
+                            )}
+                          </button>
+                          {img.sourceUrl && (
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(img.sourceUrl);
+                                setCopiedText(img.sourceUrl);
+                                setTimeout(() => setCopiedText(null), 2000);
+                              }}
+                              className="px-3 py-2 bg-white border border-[#E6E1D6] hover:bg-[#F4F0E8] text-[#6E6454] hover:text-[#1E1C18] rounded-lg transition-colors"
+                              title="Copy Source URL Only"
+                            >
+                              {copiedText === img.sourceUrl ? <CheckCircle size={14} className="text-green-600" /> : <Link size={14} />}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {photoResources.map((res, idx) => (
@@ -1470,6 +1974,225 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* Section: Dynamic Asset Uploader & Converter */}
+          <div className="border-t border-[#E6E1D6] pt-8 space-y-6">
+            <div className="space-y-1">
+              <h3 className="text-xl font-serif text-[#1E1C18]">Local Asset Uploader & Media Registrar</h3>
+              <p className="text-xs text-[#6E6454] max-w-2xl leading-relaxed">
+                Import custom photographs or cover sleeves directly into your local database. Upload local image files to convert them to high-performance **Base64 Data URLs**, or link remote public URLs to register them for instant insertion.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Left Form: 5 cols */}
+              <form onSubmit={handleRegisterAsset} className="lg:col-span-5 bg-white border border-[#E6E1D6] rounded-xl p-6 space-y-4">
+                <h4 className="text-xs font-bold uppercase tracking-widest text-[#6E6454] border-b border-[#F4F0E8] pb-2">
+                  Asset Specifications
+                </h4>
+
+                {/* Local Upload Area */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#6E6454]">Local Image File (Base64)</label>
+                  <div className="border-2 border-dashed border-[#E6E1D6] rounded-xl p-4 text-center hover:bg-[#FAF8F5] transition-colors relative group">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChangeBase64}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                    <Upload size={24} className="mx-auto text-[#8C6D1F]/50 group-hover:scale-110 transition-transform" />
+                    <p className="text-xs font-medium text-[#1E1C18] mt-2">
+                      {assetFile ? (assetFile as any).name : "Drag & Drop or Click to Upload"}
+                    </p>
+                    <p className="text-[10px] text-[#6E6454] mt-1">PNG, JPG, WEBP up to 4MB</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="h-[1px] bg-[#E6E1D6] flex-1" />
+                  <span className="text-[10px] font-mono text-[#6E6454] uppercase">OR</span>
+                  <div className="h-[1px] bg-[#E6E1D6] flex-1" />
+                </div>
+
+                {/* Public URL Input */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#6E6454]">Public Image URL</label>
+                  <input
+                    type="url"
+                    value={uploadedAssetUrl}
+                    onChange={(e) => {
+                      setUploadedAssetUrl(e.target.value);
+                      if (e.target.value) {
+                        setUploadedAssetBase64(''); // Clear base64 if public URL is active
+                      }
+                    }}
+                    placeholder="https://images.unsplash.com/... or similar"
+                    className="w-full px-3 py-2 bg-white border border-[#E6E1D6] rounded-lg text-xs focus:outline-none focus:border-[#8C6D1F]"
+                  />
+                </div>
+
+                {/* Previews if any */}
+                {(uploadedAssetBase64 || uploadedAssetUrl) && (
+                  <div className="p-3 bg-[#FAF8F5] border border-[#E6E1D6] rounded-lg flex items-center gap-3">
+                    <img
+                      src={uploadedAssetBase64 || uploadedAssetUrl}
+                      alt="Thumbnail preview"
+                      referrerPolicy="no-referrer"
+                      className="w-12 h-12 rounded object-cover border border-[#E6E1D6]"
+                    />
+                    <div className="text-[10px] font-mono text-[#6E6454] overflow-hidden flex-1">
+                      <p className="font-bold text-[#1E1C18]">Source Type: {uploadedAssetBase64 ? 'Base64 Data' : 'Remote URL'}</p>
+                      <p className="truncate">{uploadedAssetBase64 ? `${Math.round(uploadedAssetBase64.length / 1024)} KB encoded` : uploadedAssetUrl}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Asset Metadata Name */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#6E6454]">Asset Label/Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={assetName}
+                    onChange={(e) => setAssetName(e.target.value)}
+                    placeholder="e.g. Alan Watts Esalen Portrait"
+                    className="w-full px-3 py-2 bg-white border border-[#E6E1D6] rounded-lg text-xs focus:outline-none focus:border-[#8C6D1F]"
+                  />
+                </div>
+
+                {/* Asset Metadata Tag */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#6E6454]">Category Tag</label>
+                  <select
+                    value={assetTag}
+                    onChange={(e) => setAssetTag(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-[#E6E1D6] rounded-lg text-xs focus:outline-none focus:border-[#8C6D1F]"
+                  >
+                    <option value="Book Cover">Book Cover Sleeve</option>
+                    <option value="Lecture Portrait">Lecture Portrait</option>
+                    <option value="Historical Photo">Historical Scene</option>
+                    <option value="Other Contributed Media">Other Contributed Media</option>
+                  </select>
+                </div>
+
+                {/* Asset Metadata Description */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#6E6454]">Brief Description</label>
+                  <textarea
+                    value={assetDesc}
+                    onChange={(e) => setAssetDesc(e.target.value)}
+                    placeholder="Provide details of origins, source collection, or license context."
+                    rows={2}
+                    className="w-full p-3 bg-white border border-[#E6E1D6] rounded-lg text-xs focus:outline-none focus:border-[#8C6D1F]"
+                  />
+                </div>
+
+                {assetFeedback && (
+                  <div className={`p-3 rounded-lg text-[11px] font-medium leading-relaxed border ${
+                    assetFeedback.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'
+                  }`}>
+                    {assetFeedback.message}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isUploadingAsset}
+                  className="w-full py-2.5 bg-[#1E1C18] hover:bg-[#322D27] text-white text-xs font-bold uppercase tracking-widest rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <CheckCircle size={14} />
+                  <span>Register Custom Asset</span>
+                </button>
+              </form>
+
+              {/* Right: Custom Catalog Gallery: 7 cols */}
+              <div className="lg:col-span-7 space-y-4">
+                <div className="flex items-center justify-between border-b border-[#E6E1D6] pb-2">
+                  <h4 className="text-xs font-bold uppercase tracking-widest text-[#6E6454]">
+                    Registered Asset Catalog ({customAssets.length})
+                  </h4>
+                  <span className="text-[10px] text-[#8C6D1F] font-mono">Bypasses Manual Asset Coding</span>
+                </div>
+
+                {customAssets.length === 0 ? (
+                  <div className="border border-dashed border-[#E6E1D6] rounded-xl p-12 text-center text-xs text-[#6E6454] bg-white/50 space-y-3">
+                    <ImageIcon size={32} className="mx-auto text-[#8C6D1F]/30" />
+                    <p className="font-semibold text-[#1E1C18]">Your Registered Asset Catalog is Empty</p>
+                    <p className="max-w-md mx-auto text-[#6E6454]/80 text-[11px] leading-relaxed">
+                      Upload local images or paste remote image URLs on the left. Registered assets are preserved in local storage and can be programmatically injected into Metadata Input templates with a single click.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[520px] overflow-y-auto pr-1">
+                    {customAssets.map((asset) => (
+                      <div key={asset.id} className="bg-white border border-[#E6E1D6] rounded-xl p-4 flex flex-col justify-between space-y-3 shadow-sm hover:border-[#8C6D1F]/50 transition-all group">
+                        <div className="space-y-2">
+                          {/* Image box */}
+                          <div className="h-32 w-full rounded-lg bg-[#FAF8F5] overflow-hidden border border-[#E6E1D6] relative">
+                            <img
+                              src={asset.dataUrl}
+                              alt={asset.name}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            />
+                            <span className="absolute top-2 left-2 text-[8px] font-bold uppercase bg-[#8C6D1F] text-white px-1.5 py-0.5 rounded tracking-widest">
+                              {asset.tag}
+                            </span>
+                            <span className="absolute bottom-2 right-2 text-[9px] font-mono bg-[#1E1C18]/80 text-white px-2 py-0.5 rounded">
+                              {asset.type === 'base64' ? 'Base64' : 'Remote'}
+                            </span>
+                          </div>
+
+                          <div className="space-y-1">
+                            <h5 className="text-xs font-serif font-bold text-[#1E1C18] truncate">{asset.name}</h5>
+                            <p className="text-[10px] text-[#6E6454] leading-relaxed line-clamp-2">{asset.description || "No description provided."}</p>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-[#F4F0E8] flex flex-col gap-1.5">
+                          {/* Quick Injection Assist */}
+                          <button
+                            onClick={() => {
+                              handleInsertAssetUrl(asset.dataUrl);
+                              setActiveTab('input');
+                            }}
+                            className="w-full py-1.5 bg-[#8C6D1F] hover:bg-[#735817] text-white text-[10px] font-bold uppercase tracking-wider rounded-md transition-colors flex items-center justify-center gap-1"
+                            title="Auto-insert this asset into the Data Input portal JSON template"
+                          >
+                            <Sparkles size={11} />
+                            <span>Quick-Inject in JSON</span>
+                          </button>
+
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(asset.dataUrl);
+                                setCopiedText(asset.id);
+                                setTimeout(() => setCopiedText(null), 2000);
+                              }}
+                              className="flex-1 py-1 px-2 border border-[#E6E1D6] hover:bg-[#F4F0E8] text-[10px] font-semibold rounded text-[#1E1C18] flex items-center justify-center gap-1 transition-colors"
+                              title="Copy URL or base64 data string to clipboard"
+                            >
+                              {copiedText === asset.id ? <CheckCircle size={10} className="text-green-600" /> : <Copy size={10} />}
+                              <span>{copiedText === asset.id ? "Copied" : "Copy String"}</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteAsset(asset.id, asset.name)}
+                              className="p-1 border border-red-200 hover:bg-red-50 text-red-600 rounded"
+                              title="Delete registered asset"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Quick Code Sourcing Tip */}
@@ -1540,6 +2263,22 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
                 }`}
               >
                 Quote
+              </button>
+              <button
+                onClick={() => { setDataType('video'); setPasteContent(JSON.stringify(templates.video, null, 2)); }}
+                className={`px-3 py-1.5 text-[11px] font-semibold rounded-lg border transition-all ${
+                  dataType === 'video' ? 'bg-[#8C6D1F] border-[#8C6D1F] text-white' : 'bg-white border-[#E6E1D6] text-[#1E1C18]'
+                }`}
+              >
+                Video
+              </button>
+              <button
+                onClick={() => { setDataType('podcast'); setPasteContent(JSON.stringify(templates.podcast, null, 2)); }}
+                className={`px-3 py-1.5 text-[11px] font-semibold rounded-lg border transition-all ${
+                  dataType === 'podcast' ? 'bg-[#8C6D1F] border-[#8C6D1F] text-white' : 'bg-white border-[#E6E1D6] text-[#1E1C18]'
+                }`}
+              >
+                Podcast
               </button>
 
               <div className="h-6 w-[1px] bg-[#E6E1D6] mx-2 hidden sm:block" />
@@ -1623,13 +2362,24 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
               )}
 
               {inputMode === 'json' && (
-                <button
-                  type="button"
-                  onClick={handleImportData}
-                  className="w-full py-4 bg-[#1E1C18] text-white text-xs font-bold uppercase tracking-widest hover:bg-[#3A352F] transition-all rounded-xl shadow-sm"
-                >
-                  Validate & Commit to Archive Store
-                </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <button
+                    type="button"
+                    onClick={handleValidateAndPreview}
+                    className="w-full py-3.5 bg-[#8C6D1F] hover:bg-[#735817] text-white text-xs font-bold uppercase tracking-widest transition-colors rounded-xl flex items-center justify-center gap-2 shadow-sm"
+                  >
+                    <Sparkles size={14} />
+                    <span>Preview Component</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleImportData}
+                    className="w-full py-3.5 bg-[#1E1C18] text-white text-xs font-bold uppercase tracking-widest hover:bg-[#322D27] transition-all rounded-xl shadow-sm flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle size={14} />
+                    <span>Commit to Archive</span>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1705,6 +2455,44 @@ export const DeveloperDeskPage: React.FC<DeveloperDeskPageProps> = ({ onNavigate
                         }}
                         onClick={() => {}}
                       />
+                    )}
+                    {dataType === 'video' && (
+                      <VideoCard 
+                        video={{
+                          id: previewData.id || 'temp-id',
+                          title: previewData.title || 'Untitled Custom Video',
+                          slug: previewData.slug || 'untitled-slug',
+                          date: previewData.date || '1970',
+                          duration: previewData.duration || '10:00',
+                          archiveSource: previewData.archiveSource || 'Archival Tape Master',
+                          thumbnailUrl: previewData.thumbnailUrl || 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=800&q=80',
+                          description: previewData.description || 'Description placeholder.',
+                          verificationStatus: previewData.verificationStatus || 'verified-source',
+                          youtubeId: previewData.youtubeId || ''
+                        }}
+                        onClick={() => {}}
+                      />
+                    )}
+                    {dataType === 'podcast' && (
+                      <div className="p-5 rounded-xl border border-[#8C6D1F]/30 bg-[#8C6D1F]/5 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <span className="px-2.5 py-1 rounded-full bg-[#1DB954]/10 text-[#1DB954] text-[9px] font-bold uppercase tracking-wider">
+                            Spotify Podcast Item
+                          </span>
+                          <span className="text-[10px] font-mono text-[#6E6454]">
+                            {previewData.season && `S${previewData.season}`}
+                            {previewData.episode && ` E${previewData.episode}`}
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-editorial font-bold text-[#1E1C18]">{previewData.title || 'Untitled Episode'}</h4>
+                          <p className="text-xs text-[#6E6454] line-clamp-2 leading-relaxed">{previewData.description || 'No description provided.'}</p>
+                        </div>
+                        <div className="pt-3 border-t border-[#E6E1D6] flex justify-between items-center text-[10px] text-[#6E6454]">
+                          <span>Duration: <strong>{previewData.duration || '30:00'}</strong></span>
+                          <span>Spotify ID: <strong className="font-mono text-[#1E1C18]">{previewData.spotifyId || 'Missing'}</strong></span>
+                        </div>
+                      </div>
                     )}
 
                     <div className="pt-4 border-t border-[#F4F0E8] text-[10px] font-mono text-[#6E6454] space-y-1">

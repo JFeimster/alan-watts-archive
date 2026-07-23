@@ -27,6 +27,7 @@ import { AboutPage } from './pages/AboutPage';
 import { ResourcesHubPage } from './pages/ResourcesHubPage';
 import { GenericSectionPage } from './pages/GenericSectionPage';
 import { DeveloperDeskPage } from './pages/DeveloperDeskPage';
+import { PodcastsPage } from './pages/PodcastsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 export default function App() {
@@ -108,7 +109,6 @@ export default function App() {
       case 'interactive-experiences':
       case 'transcripts':
       case 'newsletter':
-      case 'podcasts':
       case 'shorts':
       case 'discussions':
       case 'listening-club':
@@ -129,6 +129,8 @@ export default function App() {
       case 'licensing':
       case 'contact':
         return <GenericSectionPage viewType={currentView.type} onNavigate={handleNavigate} />;
+      case 'podcasts':
+        return <PodcastsPage onNavigate={handleNavigate} />;
       case 'not-found':
       default:
         return <NotFoundPage onNavigate={handleNavigate} />;
