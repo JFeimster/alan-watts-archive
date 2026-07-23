@@ -1,5 +1,5 @@
 {
-  "name": "Alan Watts Wisdom",
+  "name": "Alan Watts Archive",
   "description": "An authentic editorial archive for Alan Watts lectures, books, verified quotations, essays, videos, and philosophical topics.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

@@ -39,7 +39,7 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({ isOpen, onCl
       <div className="w-full max-w-xs bg-[#F9F7F2] h-full shadow-2xl flex flex-col p-6 animate-in slide-in-from-right duration-200">
         <div className="flex items-center justify-between pb-6 border-b border-[#D1CECA]">
           <div>
-            <h2 className="text-lg font-serif font-bold text-[#1A1A1A]">Alan Watts Wisdom</h2>
+            <h2 className="text-lg font-serif font-bold text-[#1A1A1A]">Alan Watts Archive</h2>
             <p className="text-xs text-[#6B6B6B]">Authentic Archive</p>
           </div>
           <button

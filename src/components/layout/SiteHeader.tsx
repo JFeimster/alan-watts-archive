@@ -110,7 +110,7 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ currentView, onNavigate,
             className="text-left group cursor-pointer flex items-center gap-4"
           >
             <span className="text-xl sm:text-2xl font-serif font-bold tracking-tight uppercase border-b-2 border-[#B48B40] text-[#1A1A1A]">
-              Alan Watts Wisdom
+              Alan Watts Archive
             </span>
             <span className="text-[10px] tracking-[0.2em] font-bold text-[#B48B40] uppercase px-2 py-0.5 border border-[#B48B40] hidden sm:inline-block">
               Authentic Archive
