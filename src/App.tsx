@@ -5,6 +5,9 @@ import { SiteFooter } from './components/layout/SiteFooter';
 import { MobileNavigation } from './components/layout/MobileNavigation';
 import { AudioPlayer } from './components/audio/AudioPlayer';
 import { TranscriptPanel } from './components/audio/TranscriptPanel';
+import { AICompanionDrawer } from './components/common/AICompanionDrawer';
+import { AIImageStudioModal } from './components/common/AIImageStudioModal';
+import { Sparkles, Image as ImageIcon } from 'lucide-react';
 
 import { HomePage } from './pages/HomePage';
 import { StartHerePage } from './pages/StartHerePage';
@@ -36,6 +39,8 @@ export default function App() {
   const [showTranscript, setShowTranscript] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [theme, setTheme] = useState<'editorial' | 'neobrutalist'>('editorial');
+  const [isAICompanionOpen, setIsAICompanionOpen] = useState(false);
+  const [isAIImageStudioOpen, setIsAIImageStudioOpen] = useState(false);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -138,7 +143,7 @@ export default function App() {
   };
 
   return (
-    <div data-theme={theme} className="min-h-screen flex flex-col font-sans antialiased selection:bg-[#C9A227]/20">
+    <div data-theme={theme} className="min-h-screen flex flex-col font-sans antialiased selection:bg-[#C9A227]/20 relative">
       <SiteHeader 
         currentView={currentView} 
         onNavigate={handleNavigate} 
@@ -152,6 +157,34 @@ export default function App() {
       </main>
 
       <SiteFooter onNavigate={handleNavigate} />
+
+      {/* Floating AI Actions Toolbar */}
+      <div className="fixed bottom-24 right-6 z-40 flex flex-col gap-3">
+        <button
+          onClick={() => setIsAIImageStudioOpen(true)}
+          className="bg-[#F9F7F2] text-[#1A1A1A] hover:bg-[#B48B40] hover:text-white p-3.5 rounded-full shadow-xl border border-[#D1CECA] transition-all transform hover:scale-105 cursor-pointer flex items-center justify-center group"
+          title="AI Philosophical Image Studio"
+        >
+          <ImageIcon size={20} />
+          <span className="max-w-0 overflow-hidden whitespace-nowrap group-hover:max-w-xs transition-all duration-300 ease-in-out text-xs font-semibold px-0 group-hover:px-2">
+            AI Image Studio
+          </span>
+        </button>
+
+        <button
+          onClick={() => setIsAICompanionOpen(true)}
+          className="bg-[#1A1A1A] text-[#F9F7F2] hover:bg-[#B48B40] p-4 rounded-full shadow-2xl border border-[#B48B40]/40 transition-all transform hover:scale-105 cursor-pointer flex items-center justify-center group"
+          title="Alan Watts AI Companion"
+        >
+          <Sparkles size={22} className="text-[#B48B40] group-hover:text-white" />
+          <span className="max-w-0 overflow-hidden whitespace-nowrap group-hover:max-w-xs transition-all duration-300 ease-in-out text-xs font-semibold px-0 group-hover:px-2">
+            Ask Alan Watts AI
+          </span>
+        </button>
+      </div>
+
+      <AICompanionDrawer isOpen={isAICompanionOpen} onClose={() => setIsAICompanionOpen(false)} />
+      <AIImageStudioModal isOpen={isAIImageStudioOpen} onClose={() => setIsAIImageStudioOpen(false)} />
 
       <MobileNavigation 
         isOpen={isMobileNavOpen} 
@@ -175,3 +208,4 @@ export default function App() {
     </div>
   );
 }
+

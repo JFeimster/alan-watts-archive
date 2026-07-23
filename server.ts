@@ -355,36 +355,43 @@ JSON format:
       if (htmlRes.ok) {
         fetchedHtml = await htmlRes.text();
         
+        // Focus on main content container if present
+        let targetContentHtml = fetchedHtml;
+        const mainMatch = fetchedHtml.match(/<main[^>]*>([\s\S]*?)<\/main>/i) || fetchedHtml.match(/<article[^>]*>([\s\S]*?)<\/article>/i) || fetchedHtml.match(/<div[^>]*class=["'][^"']*(?:content|document|article|transcript)[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+        if (mainMatch && mainMatch[1]) {
+          targetContentHtml = mainMatch[1];
+        }
+
         // Title extraction
-        const ogTitleMatch = fetchedHtml.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
+        const ogTitleMatch = targetContentHtml.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) || fetchedHtml.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
         if (ogTitleMatch && ogTitleMatch[1]) {
           fetchedTitle = ogTitleMatch[1].trim();
         }
         if (!fetchedTitle) {
-          const titleMatch = fetchedHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
+          const titleMatch = targetContentHtml.match(/<title[^>]*>([^<]+)<\/title>/i) || fetchedHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
           if (titleMatch && titleMatch[1]) {
             fetchedTitle = titleMatch[1].trim().replace(/\s*[-–—|]\s*Alan Watts Archive.*$/i, '');
           }
         }
         if (!fetchedTitle) {
-          const h1Match = fetchedHtml.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+          const h1Match = targetContentHtml.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
           if (h1Match && h1Match[1]) {
             fetchedTitle = h1Match[1].replace(/<[^>]+>/g, '').trim();
           }
         }
 
         // Year extraction
-        const yearMatch = fetchedHtml.match(/\b(19[5-9]\d|20\d{2})\b/);
+        const yearMatch = targetContentHtml.match(/\b(19[5-9]\d|20\d{2})\b/) || fetchedHtml.match(/\b(19[5-9]\d|20\d{2})\b/);
         if (yearMatch && yearMatch[1]) {
           fetchedYear = parseInt(yearMatch[1], 10);
         }
 
-        // Paragraphs extraction
-        const pMatches = fetchedHtml.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi);
+        // Paragraphs extraction (filtering out navigation/footer boilerplate)
+        const pMatches = targetContentHtml.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi);
         const paragraphs: string[] = [];
         for (const p of pMatches) {
           const cleanP = p[1].replace(/<[^>]+>/g, '').trim();
-          if (cleanP.length > 20) {
+          if (cleanP.length > 40 && !cleanP.toLowerCase().includes('cookie') && !cleanP.toLowerCase().includes('copyright') && !cleanP.toLowerCase().includes('all rights reserved')) {
             paragraphs.push(cleanP);
           }
         }
@@ -393,15 +400,15 @@ JSON format:
           summary = paragraphs[0];
           fetchedText = paragraphs.join('\n\n');
           if (paragraphs.length > 1) {
-            keyIdeas.push(paragraphs[1].substring(0, 80) + '...');
+            keyIdeas.push(paragraphs[1].substring(0, 100) + '...');
           }
           if (paragraphs.length > 2) {
-            keyIdeas.push(paragraphs[2].substring(0, 80) + '...');
+            keyIdeas.push(paragraphs[2].substring(0, 100) + '...');
           }
         }
 
         // Extract topic pills / links if present
-        const topicMatches = fetchedHtml.matchAll(/<a[^>]*class=["'][^"']*topic[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi);
+        const topicMatches = targetContentHtml.matchAll(/<a[^>]*class=["'][^"']*topic[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi);
         for (const tm of topicMatches) {
           const tName = tm[1].replace(/<[^>]+>/g, '').trim();
           if (tName && !topics.includes(tName)) {
@@ -409,7 +416,7 @@ JSON format:
           }
         }
         if (topics.length === 0) {
-          topics.push('eastern-philosophy', 'consciousness', 'technology');
+          topics.push('eastern-philosophy', 'consciousness', 'mysticism');
         }
       }
     } catch (e) {
@@ -459,6 +466,104 @@ JSON format:
       text: '```json\n' + JSON.stringify(structuredRecord, null, 2) + '\n```',
       citations: [{ uri: targetUrl, title: fetchedTitle }]
     });
+  });
+
+  // AI Chat endpoint using gemini-3.5-flash
+  app.post('/api/ai-chat', async (req, res) => {
+    try {
+      const { messages } = req.body;
+      if (!messages || !Array.isArray(messages)) {
+        return res.status(400).json({ error: 'Messages array is required' });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'GEMINI_API_KEY environment variable is not configured.' });
+      }
+
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+
+      const formattedHistory = messages.slice(0, -1).map((m: any) => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.content }]
+      }));
+
+      const lastMessage = messages[messages.length - 1]?.content || '';
+
+      const chat = ai.chats.create({
+        model: 'gemini-3.5-flash',
+        history: formattedHistory,
+        config: {
+          systemInstruction: 'You are the Alan Watts Philosophical Guide and Scholarly Companion, preserving the authentic voice, wisdom, and lectures of Alan Watts (1915–1973). Speak with eloquence, wit, gentle humor, and deep insight into Zen, Taoism, Advaita Vedanta, and the illusion of the separate ego. Guide seekers to recognize that life is play, music, and dance rather than a solemn problem to be solved.',
+          tools: [{ googleSearch: {} }]
+        }
+      });
+
+      const result = await chat.sendMessage({ message: lastMessage });
+      const responseText = result.text;
+      const chunks = result.candidates?.[0]?.groundingMetadata?.groundingChunks;
+      const citations = chunks ? chunks.map((c: any) => ({
+        uri: c.web?.uri,
+        title: c.web?.title,
+      })).filter((c: any) => c.uri) : [];
+
+      res.json({ text: responseText, citations });
+    } catch (error: any) {
+      console.error('AI Chat Error:', error);
+      res.status(500).json({ error: error.message || 'Failed to generate AI response' });
+    }
+  });
+
+  // AI Image Generation endpoint using gemini-3.1-flash-image-preview
+  app.post('/api/generate-image', async (req, res) => {
+    try {
+      const { prompt, aspectRatio = '1:1' } = req.body;
+      if (!prompt) {
+        return res.status(400).json({ error: 'Prompt is required' });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'GEMINI_API_KEY environment variable is not configured.' });
+      }
+
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+
+      const response = await ai.models.generateImages({
+        model: 'gemini-3.1-flash-image-preview',
+        prompt: `Create an artistic, contemplative, archival illustration for: ${prompt}. Style: aesthetic philosophical zen atmosphere, minimalist typography or abstract nature integration, high quality editorial design.`,
+        config: {
+          numberOfImages: 1,
+          outputMimeType: 'image/jpeg',
+          aspectRatio: aspectRatio as any,
+        }
+      });
+
+      const generatedImage = response.generatedImages?.[0];
+      if (!generatedImage || !generatedImage.image?.imageBytes) {
+        throw new Error('No image was returned by the model.');
+      }
+
+      const base64Image = `data:image/jpeg;base64,${generatedImage.image.imageBytes}`;
+      res.json({ imageUrl: base64Image });
+    } catch (error: any) {
+      console.error('Image Generation Error:', error);
+      res.status(500).json({ error: error.message || 'Failed to generate image' });
+    }
   });
 
   // Vite middleware for development
