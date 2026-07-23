@@ -26,6 +26,7 @@ import { SearchPage } from './pages/SearchPage';
 import { AboutPage } from './pages/AboutPage';
 import { ResourcesHubPage } from './pages/ResourcesHubPage';
 import { GenericSectionPage } from './pages/GenericSectionPage';
+import { DeveloperDeskPage } from './pages/DeveloperDeskPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 export default function App() {
@@ -97,6 +98,8 @@ export default function App() {
         return <SearchPage initialQuery={currentView.query} onNavigate={handleNavigate} onPlayLecture={handlePlayLecture} />;
       case 'about':
         return <AboutPage onNavigate={handleNavigate} />;
+      case 'developer-desk':
+        return <DeveloperDeskPage onNavigate={handleNavigate} onPlayLecture={handlePlayLecture} />;
       case 'resources':
         return <ResourcesHubPage onNavigate={handleNavigate} />;
       case 'listening-paths':

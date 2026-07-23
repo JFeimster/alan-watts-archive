@@ -147,7 +147,7 @@ export const TOPICS: Topic[] = [
   }
 ];
 
-export const LECTURES: Lecture[] = [
+const baseLECTURES: Lecture[] = [
   {
     id: 'lec-1',
     title: 'The Nature of Consciousness: Out of Your Mind (Part 1)',
@@ -322,18 +322,18 @@ export const COLLECTIONS: Collection[] = [
   }
 ];
 
-export const BOOKS: Book[] = [
+const baseBOOKS: Book[] = [
   {
     id: 'book-1',
-    title: 'The Book on the Taboo Against Knowing Who You Are',
+    title: 'The Book: On the Taboo Against Knowing Who You Are',
     slug: 'the-book-on-the-taboo-against-knowing-who-you-are',
     year: 1966,
     publisher: 'Pantheon Books',
     description: 'Explores the root of our existential anxiety: the illusion that we are isolated egos separate from the physical universe. Watts presents an eye-opening alternative view of identity.',
-    coverImage: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&w=800&q=80',
+    coverImage: 'https://covers.openlibrary.org/b/isbn/0679723005-L.jpg',
     keyThemes: ['Ego Illusion', 'Cosmic Unity', 'Social Conditioning'],
     audiobookAvailable: true,
-    purchaseUrl: 'https://www.penguinrandomhouse.com',
+    purchaseUrl: 'https://a.co/d/041HkuqU',
     tableOfContents: [
       'The Game of Black-and-White',
       'The Crock of Gold',
@@ -384,7 +384,7 @@ export const BOOKS: Book[] = [
   }
 ];
 
-export const QUOTES: Quote[] = [
+const baseQUOTES: Quote[] = [
   {
     id: 'q1',
     text: 'You are an aperture through which the universe is looking and exploring itself.',
@@ -519,3 +519,45 @@ export const VIDEOS: VideoItem[] = [
     verificationStatus: 'verified-source'
   }
 ];
+
+export let LECTURES: Lecture[] = [...baseLECTURES];
+export let BOOKS: Book[] = [...baseBOOKS];
+export let QUOTES: Quote[] = [...baseQUOTES];
+
+if (typeof window !== 'undefined') {
+  try {
+    const customLectures = localStorage.getItem('custom_lectures');
+    if (customLectures) {
+      const parsed = JSON.parse(customLectures);
+      if (Array.isArray(parsed)) {
+        LECTURES = [...baseLECTURES, ...parsed];
+      }
+    }
+  } catch (e) {
+    console.error('Error loading custom lectures:', e);
+  }
+
+  try {
+    const customBooks = localStorage.getItem('custom_books');
+    if (customBooks) {
+      const parsed = JSON.parse(customBooks);
+      if (Array.isArray(parsed)) {
+        BOOKS = [...baseBOOKS, ...parsed];
+      }
+    }
+  } catch (e) {
+    console.error('Error loading custom books:', e);
+  }
+
+  try {
+    const customQuotes = localStorage.getItem('custom_quotes');
+    if (customQuotes) {
+      const parsed = JSON.parse(customQuotes);
+      if (Array.isArray(parsed)) {
+        QUOTES = [...baseQUOTES, ...parsed];
+      }
+    }
+  } catch (e) {
+    console.error('Error loading custom quotes:', e);
+  }
+}

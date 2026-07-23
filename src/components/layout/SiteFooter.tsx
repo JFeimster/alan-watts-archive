@@ -34,6 +34,7 @@ export const SiteFooter: React.FC<SiteFooterProps> = ({ onNavigate }) => {
             <li><button onClick={() => onNavigate({ type: 'licensing' })} className="hover:text-white transition-colors">Licensing Information</button></li>
             <li><button onClick={() => onNavigate({ type: 'contact' })} className="hover:text-white transition-colors">Contact</button></li>
             <li><button onClick={() => onNavigate({ type: 'about' })} className="hover:text-white transition-colors">Editorial Standards</button></li>
+            <li><button onClick={() => onNavigate({ type: 'developer-desk' })} className="hover:text-[#B48B40] transition-colors font-mono opacity-80 text-[10px]">Staff Portal (Developer Desk)</button></li>
           </ul>
         </div>
         <div className="space-y-3">

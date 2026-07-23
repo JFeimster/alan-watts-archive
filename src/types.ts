@@ -148,4 +148,5 @@ export type ViewState =
   | { type: 'sponsor' }
   | { type: 'licensing' }
   | { type: 'contact' }
+  | { type: 'developer-desk' }
   | { type: 'not-found' };
